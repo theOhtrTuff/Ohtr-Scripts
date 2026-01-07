@@ -1,92 +1,96 @@
-local _, library = pcall(loadstring(game:HttpGet("https://raw.githubusercontent.com/TrixAde/Osmium/main/OsmiumLibrary.lua")))
-local window = library:CreateWindow("Osmium UI Library")
+-- Load Osmium library
+local ok, library = pcall(loadstring(game:HttpGet("https://raw.githubusercontent.com/TrixAde/Osmium/main/OsmiumLibrary.lua")))
+if not ok or not library then return end
 
--- Tabs
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+local player = Players.LocalPlayer
+
+-- Anti-AFK
+player.Idled:Connect(function()
+    VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
+
+-- UI
+local window = library:CreateWindow("Osmium UI Library")
 local mainTab = window:CreateTab("Main")
 local autoFarmTab = window:CreateTab("Auto Farm")
 
--- =========================
--- Auto Farm Toggles + Money Info
--- =========================
+-- Worlds
 local worlds = {
     ["BloodMoon"] = {name = "BloodMoon", money = 8400},
-    ["Fire"] = {name = "Fire", money = 3150},
-    ["Starter"] = {name = "Starter", money = 900},
-    ["Toxic"] = {name = "Toxic", money = 5250}
+    ["Fire"]      = {name = "Fire",      money = 3150},
+    ["Starter"]   = {name = "Starter",   money = 900},
+    ["Toxic"]     = {name = "Toxic",     money = 5250},
+    ["CyberPunk"] = {name = "CyberPunk", money = 12000},
 }
 
 local toggleStates = {}
-local loops = {} -- store loop coroutines so we can manage them
+local loops = {}
 
 for displayName, data in pairs(worlds) do
     toggleStates[data.name] = false
-    loops[data.name] = nil
+    loops[data.name] = false
 
-    -- Show toggle with money info
-    local toggle = autoFarmTab:CreateToggle(displayName.." Auto Farm", false, function(state)
+    autoFarmTab:CreateToggle(displayName.." Auto Farm", false, function(state)
         toggleStates[data.name] = state
+        if not state or loops[data.name] then return end
 
-        if state then
-            -- spawn a new loop only if not already running
-            if not loops[data.name] then
-                loops[data.name] = true
-                spawn(function()
-                    local player = game.Players.LocalPlayer
-                    while toggleStates[data.name] do
-                        local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                        if not hrp then
-                            wait(1)
-                        else
-                            local world = workspace:FindFirstChild("Worlds") and workspace.Worlds:FindFirstChild(data.name)
-                            local win = world and world:FindFirstChild("Nodes") and world.Nodes:FindFirstChild("Win")
-                            if win then
-                                hrp.CFrame = win.CFrame + Vector3.new(0,3,0)
-                                wait(21) -- cooldown for money
-                                local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-                                if humanoid then
-                                    humanoid.Health = 0
-                                    wait(3) -- wait for respawn
-                                end
-                            else
-                                warn("Win not found for "..data.name)
-                                wait(1)
-                            end
-                        end
+        loops[data.name] = true
+        task.spawn(function()
+            while toggleStates[data.name] do
+                local char = player.Character or player.CharacterAdded:Wait()
+                local hrp = char:WaitForChild("HumanoidRootPart")
+
+                -- wait BEFORE teleport
+                task.wait(21)
+                if not toggleStates[data.name] then break end
+
+                local world = workspace:FindFirstChild("Worlds")
+                             and workspace.Worlds:FindFirstChild(data.name)
+                local win = world
+                            and world:FindFirstChild("Nodes")
+                            and world.Nodes:FindFirstChild("Win")
+
+                if win then
+                    hrp.CFrame = win.CFrame + Vector3.new(0,3,0)
+                    task.wait(1)
+
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        hum.Health = 0
+                        task.wait(3)
                     end
-                    loops[data.name] = nil -- mark loop as stopped
-                end)
+                else
+                    warn("Win not found for "..data.name)
+                    task.wait(1)
+                end
             end
-        else
-            print(displayName.." Auto Farm stopped")
-        end
+            loops[data.name] = false
+        end)
     end)
 
-    -- Add a label showing how much money it gives
     autoFarmTab:CreateLabel(displayName.." Reward: "..data.money.." (scaled by rebirths)")
 end
 
--- Add a general note about rebirth scaling
-autoFarmTab:CreateLabel("Note: Money increases with your rebirth count!")
+autoFarmTab:CreateLabel("Note: waits 21s before teleport")
 
--- =========================
--- Main tab fun stuff
--- =========================
+-- Main tab sliders
 mainTab:CreateSlider("WalkSpeed", 16, 500, function(val)
-    local humanoid = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.WalkSpeed = val
-    end
+    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = val end
 end)
 
 mainTab:CreateSlider("JumpPower", 50, 300, function(val)
-    local humanoid = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.JumpPower = val
-    end
+    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = val end
 end)
 
+-- Destroy GUI button
 mainTab:CreateButton("Destroy GUI", function()
-    for i, v in pairs(game.CoreGui:GetChildren()) do
+    for _, v in pairs(game.CoreGui:GetChildren()) do
         if v:FindFirstChild("Top") then
             v:Destroy()
         end
